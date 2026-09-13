@@ -3,35 +3,73 @@
 
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+  >
 
   <title>Estación Meteorológica</title>
 
   <link rel="stylesheet" href="style.css">
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 
 <body>
 
-  <div class="contenedor">
+  <main>
 
-    <h1>Estación Meteorológica</h1>
+    <header class="encabezado">
 
-    <div class="dato">
-      Temperatura:
-      <span id="temperatura">--</span> °C
+      <div>
+        <h1>Estación Meteorológica</h1>
+
+        <p>
+          Monitoreo ambiental en tiempo real
+        </p>
+      </div>
+
+      <div class="selector-periodo">
+
+        <label for="periodo">
+          Periodo
+        </label>
+
+        <select id="periodo">
+
+          <option value="1">
+            Última hora
+          </option>
+
+          <option value="6">
+            Últimas 6 horas
+          </option>
+
+          <option value="24" selected>
+            Últimas 24 horas
+          </option>
+
+        </select>
+
+      </div>
+
+    </header>
+
+
+    <div id="estado">
+      Cargando datos...
     </div>
 
-    <div class="dato">
-      Humedad:
-      <span id="humedad">--</span> %
-    </div>
 
-    <div class="actualizacion">
-      Última actualización:
-      <span id="fecha">--</span>
-    </div>
+    <section
+      id="dashboard"
+      class="dashboard"
+    >
+    </section>
 
-  </div>
+  </main>
+
 
   <script src="script.js"></script>
 
