@@ -1,68 +1,73 @@
-const SUPABASE_URL = "https://imjfsbbmyhwpjiivhjwl.supabase.co";
+const SUPABASE_URL =
+  "https://imjfsbbmyhwpjiivhjwl.supabase.co";
 
 const SUPABASE_KEY =
   "sb_publishable_mRzzlWUdktiy2mYBIsXp-A_BTyCv_W0";
 
+const DISPOSITIVO =
+  "esp32-c3-01";
 
-// Obtener la medición más reciente
-async function obtenerDatos() {
+
+const dashboard =
+  document.getElementById("dashboard");
+
+const estado =
+  document.getElementById("estado");
+
+const selectorPeriodo =
+  document.getElementById("periodo");
+
+
+let graficas = [];
+
+
+// =====================================================
+// CARGAR DASHBOARD
+// =====================================================
+
+async function cargarDashboard() {
 
   try {
 
-    const respuesta = await fetch(
-      `${SUPABASE_URL}/rest/v1/mediciones?select=temperatura,humedad,created_at&order=created_at.desc&limit=1`,
-      {
-        headers: {
-          "apikey": SUPABASE_KEY
-        }
-      }
-    );
+    estado.textContent =
+      "Actualizando datos...";
 
 
-    if (!respuesta.ok) {
-      throw new Error("Error consultando Supabase");
-    }
+    const horas =
+      Number(selectorPeriodo.value);
 
 
-    const datos = await respuesta.json();
+    const fechaInicio =
+      new Date(
+        Date.now()
+        -
+        horas * 60 * 60 * 1000
+      );
 
 
-    // Si todavía no existen mediciones
+    const datos =
+      await obtenerLecturas(
+        fechaInicio
+      );
+
+
     if (datos.length === 0) {
 
-      document.getElementById("temperatura").textContent = "--";
-      document.getElementById("humedad").textContent = "--";
-      document.getElementById("fecha").textContent = "Sin datos";
+      dashboard.innerHTML = "";
+
+      estado.textContent =
+        "No hay datos disponibles para este periodo.";
 
       return;
+
     }
 
 
-    const medicion = datos[0];
+    construirDashboard(datos);
 
 
-    // Mostrar temperatura
-    document.getElementById("temperatura").textContent =
-      Number(medicion.temperatura).toFixed(1);
-
-
-    // Mostrar humedad
-    document.getElementById("humedad").textContent =
-      Number(medicion.humedad).toFixed(1);
-
-
-    // Convertir fecha
-    const fecha = new Date(medicion.created_at);
-
-
-    document.getElementById("fecha").textContent =
-      fecha.toLocaleString(
-        "es-CO",
-        {
-          dateStyle: "short",
-          timeStyle: "medium"
-        }
-      );
+    estado.textContent =
+      "Datos actualizados";
 
   }
 
@@ -70,22 +75,689 @@ async function obtenerDatos() {
 
     console.error(error);
 
-    document.getElementById("temperatura").textContent = "--";
-    document.getElementById("humedad").textContent = "--";
-    document.getElementById("fecha").textContent =
-      "Error de conexión";
+    estado.textContent =
+      "Error al consultar los datos.";
 
   }
 
 }
 
 
-// Ejecutar al abrir la página
-obtenerDatos();
+// =====================================================
+// OBTENER TODAS LAS LECTURAS
+// =====================================================
+
+async function obtenerLecturas(fechaInicio) {
+
+  const resultados = [];
+
+  const cantidadPagina = 1000;
+
+  let inicio = 0;
 
 
-// Actualizar automáticamente cada 5 segundos
+  while (true) {
+
+    const fin =
+      inicio
+      +
+      cantidadPagina
+      -
+      1;
+
+
+    const url =
+      `${SUPABASE_URL}/rest/v1/lecturas`
+      +
+      `?select=sensor,variable,valor,unidad,created_at`
+      +
+      `&dispositivo=eq.${encodeURIComponent(DISPOSITIVO)}`
+      +
+      `&created_at=gte.${encodeURIComponent(fechaInicio.toISOString())}`
+      +
+      `&order=created_at.asc`;
+
+
+    const respuesta =
+      await fetch(
+        url,
+        {
+          headers: {
+
+            "apikey":
+              SUPABASE_KEY,
+
+            "Range":
+              `${inicio}-${fin}`
+
+          }
+        }
+      );
+
+
+    if (!respuesta.ok) {
+
+      throw new Error(
+        "Error consultando Supabase"
+      );
+
+    }
+
+
+    const pagina =
+      await respuesta.json();
+
+
+    resultados.push(
+      ...pagina
+    );
+
+
+    if (
+      pagina.length
+      <
+      cantidadPagina
+    ) {
+
+      break;
+
+    }
+
+
+    inicio +=
+      cantidadPagina;
+
+  }
+
+
+  return resultados;
+
+}
+
+
+// =====================================================
+// CONSTRUIR DASHBOARD
+// =====================================================
+
+function construirDashboard(datos) {
+
+  destruirGraficas();
+
+  dashboard.innerHTML = "";
+
+
+  const grupos = {};
+
+
+  datos.forEach(lectura => {
+
+    const clave =
+      lectura.sensor
+      +
+      "|"
+      +
+      lectura.variable
+      +
+      "|"
+      +
+      lectura.unidad;
+
+
+    if (!grupos[clave]) {
+
+      grupos[clave] = {
+        sensor:
+          lectura.sensor,
+
+        variable:
+          lectura.variable,
+
+        unidad:
+          lectura.unidad,
+
+        lecturas: []
+      };
+
+    }
+
+
+    grupos[clave]
+      .lecturas
+      .push(lectura);
+
+  });
+
+
+  Object
+    .values(grupos)
+    .forEach(grupo => {
+
+      crearSensor(grupo);
+
+    });
+
+}
+
+
+// =====================================================
+// CREAR SENSOR
+// =====================================================
+
+function crearSensor(grupo) {
+
+  const lecturas =
+    grupo.lecturas;
+
+
+  if (
+    lecturas.length === 0
+  ) {
+
+    return;
+
+  }
+
+
+  const valores =
+    lecturas.map(
+      lectura =>
+        Number(lectura.valor)
+    );
+
+
+  const actual =
+    valores[
+      valores.length - 1
+    ];
+
+
+  const minimo =
+    Math.min(...valores);
+
+
+  const maximo =
+    Math.max(...valores);
+
+
+  const promedio =
+    valores.reduce(
+      (suma, valor) =>
+        suma + valor,
+      0
+    )
+    /
+    valores.length;
+
+
+  const ultimaLectura =
+    lecturas[
+      lecturas.length - 1
+    ];
+
+
+  const contenedor =
+    document.createElement("article");
+
+
+  contenedor.className =
+    "sensor";
+
+
+  const canvasID =
+    "grafica-"
+    +
+    Math.random()
+      .toString(36)
+      .substring(2);
+
+
+  contenedor.innerHTML = `
+
+    <div class="sensor-header">
+
+      <div>
+
+        <h2>
+          ${formatearNombre(grupo.variable)}
+        </h2>
+
+        <div class="nombre-sensor">
+          ${grupo.sensor}
+        </div>
+
+      </div>
+
+      <div class="valor-actual">
+
+        ${formatearNumero(actual)}
+
+        ${grupo.unidad}
+
+      </div>
+
+    </div>
+
+
+    <div class="estadisticas">
+
+      <div class="estadistica">
+
+        <span class="titulo">
+          Mínimo
+        </span>
+
+        <span class="valor">
+
+          ${formatearNumero(minimo)}
+
+          ${grupo.unidad}
+
+        </span>
+
+      </div>
+
+
+      <div class="estadistica">
+
+        <span class="titulo">
+          Promedio
+        </span>
+
+        <span class="valor">
+
+          ${formatearNumero(promedio)}
+
+          ${grupo.unidad}
+
+        </span>
+
+      </div>
+
+
+      <div class="estadistica">
+
+        <span class="titulo">
+          Máximo
+        </span>
+
+        <span class="valor">
+
+          ${formatearNumero(maximo)}
+
+          ${grupo.unidad}
+
+        </span>
+
+      </div>
+
+    </div>
+
+
+    <div class="grafica">
+
+      <canvas
+        id="${canvasID}">
+      </canvas>
+
+    </div>
+
+
+    <div class="ultima-actualizacion">
+
+      Última actualización:
+
+      ${formatearFecha(
+        ultimaLectura.created_at
+      )}
+
+    </div>
+
+  `;
+
+
+  dashboard.appendChild(
+    contenedor
+  );
+
+
+  crearGrafica(
+    canvasID,
+    grupo
+  );
+
+}
+
+
+// =====================================================
+// CREAR GRÁFICA
+// =====================================================
+
+function crearGrafica(
+  canvasID,
+  grupo
+) {
+
+  const datosReducidos =
+    reducirDatos(
+      grupo.lecturas,
+      150
+    );
+
+
+  const etiquetas =
+    datosReducidos.map(
+      lectura =>
+        formatearHora(
+          lectura.created_at
+        )
+    );
+
+
+  const valores =
+    datosReducidos.map(
+      lectura =>
+        Number(
+          lectura.valor
+        )
+    );
+
+
+  const canvas =
+    document.getElementById(
+      canvasID
+    );
+
+
+  const grafica =
+    new Chart(
+      canvas,
+      {
+
+        type: "line",
+
+        data: {
+
+          labels:
+            etiquetas,
+
+          datasets: [
+
+            {
+
+              label:
+                formatearNombre(
+                  grupo.variable
+                ),
+
+              data:
+                valores,
+
+              borderWidth:
+                2,
+
+              pointRadius:
+                0,
+
+              pointHoverRadius:
+                4,
+
+              tension:
+                0.25
+
+            }
+
+          ]
+
+        },
+
+
+        options: {
+
+          responsive:
+            true,
+
+          maintainAspectRatio:
+            false,
+
+
+          interaction: {
+
+            intersect:
+              false,
+
+            mode:
+              "index"
+
+          },
+
+
+          plugins: {
+
+            legend: {
+              display:
+                false
+            }
+
+          },
+
+
+          scales: {
+
+            x: {
+
+              ticks: {
+
+                maxTicksLimit:
+                  8
+
+              }
+
+            },
+
+
+            y: {
+
+              title: {
+
+                display:
+                  true,
+
+                text:
+                  grupo.unidad
+
+              }
+
+            }
+
+          }
+
+        }
+
+      }
+    );
+
+
+  graficas.push(
+    grafica
+  );
+
+}
+
+
+// =====================================================
+// REDUCIR PUNTOS DE LA GRÁFICA
+// =====================================================
+
+function reducirDatos(
+  datos,
+  maximoPuntos
+) {
+
+  if (
+    datos.length
+    <=
+    maximoPuntos
+  ) {
+
+    return datos;
+
+  }
+
+
+  const resultado = [];
+
+  const salto =
+    datos.length
+    /
+    maximoPuntos;
+
+
+  for (
+    let i = 0;
+    i < maximoPuntos;
+    i++
+  ) {
+
+    const indice =
+      Math.floor(
+        i * salto
+      );
+
+
+    resultado.push(
+      datos[indice]
+    );
+
+  }
+
+
+  resultado.push(
+    datos[
+      datos.length - 1
+    ]
+  );
+
+
+  return resultado;
+
+}
+
+
+// =====================================================
+// DESTRUIR GRÁFICAS ANTERIORES
+// =====================================================
+
+function destruirGraficas() {
+
+  graficas.forEach(
+    grafica =>
+      grafica.destroy()
+  );
+
+
+  graficas = [];
+
+}
+
+
+// =====================================================
+// FORMATO DEL NOMBRE
+// =====================================================
+
+function formatearNombre(nombre) {
+
+  const texto =
+    nombre
+      .replaceAll("_", " ");
+
+
+  return (
+    texto.charAt(0)
+      .toUpperCase()
+    +
+    texto.slice(1)
+  );
+
+}
+
+
+// =====================================================
+// FORMATO DE NÚMERO
+// =====================================================
+
+function formatearNumero(numero) {
+
+  return Number(numero)
+    .toFixed(1);
+
+}
+
+
+// =====================================================
+// FORMATO DE FECHA
+// =====================================================
+
+function formatearFecha(fecha) {
+
+  return new Date(fecha)
+    .toLocaleString(
+      "es-CO",
+      {
+        dateStyle:
+          "short",
+
+        timeStyle:
+          "medium"
+      }
+    );
+
+}
+
+
+// =====================================================
+// FORMATO DE HORA
+// =====================================================
+
+function formatearHora(fecha) {
+
+  return new Date(fecha)
+    .toLocaleTimeString(
+      "es-CO",
+      {
+        hour:
+          "2-digit",
+
+        minute:
+          "2-digit"
+      }
+    );
+
+}
+
+
+// =====================================================
+// CAMBIO DE PERIODO
+// =====================================================
+
+selectorPeriodo
+  .addEventListener(
+    "change",
+    cargarDashboard
+  );
+
+
+// =====================================================
+// PRIMERA CARGA
+// =====================================================
+
+cargarDashboard();
+
+
+// =====================================================
+// ACTUALIZAR CADA 30 SEGUNDOS
+// =====================================================
+
 setInterval(
-  obtenerDatos,
-  5000
+  cargarDashboard,
+  30000
 );
